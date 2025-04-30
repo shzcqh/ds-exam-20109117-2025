@@ -1,4 +1,6 @@
-# Distributed Systems Exam Starter.# Instructions to student.
+# Distributed Systems Exam Starter.
+
+## Instructions to student.
 
 This repository contains the starting code for a lab-based exam on the Distributed Systems module.
 ## Setup
@@ -8,8 +10,11 @@ Import the project into VS Code and run the following commands:
 ~~~
 $ npm install
 $ npm run schema
+$ git add -A
+$ git commit -m "Added dependencies."
 $ git push origin main
 ~~~
+
 ## The App.
 Deploy the app to your AWS account (cdk deploy).
 
