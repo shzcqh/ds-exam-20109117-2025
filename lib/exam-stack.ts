@@ -19,7 +19,6 @@ export class ExamStack extends cdk.Stack {
     // ================================
     // Question 1 – Serverless REST API
 
-   
     const table = new dynamodb.Table(this, "MoviesTable", {
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       partitionKey: { name: "movieId", type: dynamodb.AttributeType.NUMBER },
@@ -28,7 +27,6 @@ export class ExamStack extends cdk.Stack {
       tableName:    "ExamTable",
     });
 
-   
     const question1Fn = new lambdanode.NodejsFunction(this, "Question1Fn", {
       architecture: lambda.Architecture.ARM_64,
       runtime:      lambda.Runtime.NODEJS_22_X,
@@ -41,10 +39,8 @@ export class ExamStack extends cdk.Stack {
       },
     });
 
-   
     table.grantReadData(question1Fn);
 
-  
     new custom.AwsCustomResource(this, "moviesddbInitData", {
       onCreate: {
         service: "DynamoDB",
@@ -62,7 +58,6 @@ export class ExamStack extends cdk.Stack {
       }),
     });
 
-    
     const api = new apig.RestApi(this, "ExamAPI", {
       description: "Exam api",
       deployOptions: { stageName: "dev" },
@@ -82,7 +77,7 @@ export class ExamStack extends cdk.Stack {
       new apig.LambdaIntegration(question1Fn)
     );
 
-    
+    // ================================
     // Question 2 – Event-Driven Architecture
 
     // 1) SNS Topic
@@ -107,17 +102,23 @@ export class ExamStack extends cdk.Stack {
       memorySize:   128,
       environment: { REGION: "eu-west-1" },
     });
+
     const lambdaYFn = new lambdanode.NodejsFunction(this, "LambdaYFn", {
       architecture: lambda.Architecture.ARM_64,
       runtime:      lambda.Runtime.NODEJS_22_X,
       entry:        `${__dirname}/../lambdas/lambdaY.ts`,
       timeout:      cdk.Duration.seconds(10),
       memorySize:   128,
-      environment: { REGION: "eu-west-1" },
+      environment: {
+        REGION:     "eu-west-1",
+        QUEUE_B_URL: queueB.queueUrl,     
+      },
     });
 
+    // Authorize lambdaYFn to send messages to queueB
+    queueB.grantSendMessages(lambdaYFn);
+
     // ── Part A + Part B Implementation ───────────────────────────────
-    
     topic1.addSubscription(new subs.SqsSubscription(queueA, {
       filterPolicy: {
         country: sns.SubscriptionFilter.stringFilter({
@@ -126,7 +127,6 @@ export class ExamStack extends cdk.Stack {
       },
     }));
 
-    
     topic1.addSubscription(new subs.LambdaSubscription(lambdaYFn, {
       filterPolicy: {
         country: sns.SubscriptionFilter.stringFilter({
@@ -135,11 +135,10 @@ export class ExamStack extends cdk.Stack {
       },
     }));
 
-    
     lambdaXFn.addEventSource(
       new events.SqsEventSource(queueA)
     );
-   
+    
 
     
   }
