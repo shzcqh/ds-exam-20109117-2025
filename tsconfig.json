@@ -22,17 +22,15 @@
       "shared/@types"
     ]
   },
-
-  // <<< Add these two sections:
   "include": [
     "bin/**/*.ts",
     "lambdas/**/*.ts",
     "lib/**/*.ts",
-    "seed/**/*.ts",
-    "test/**/*.ts"
+    "seed/**/*.ts"
   ],
   "exclude": [
     "node_modules",
-    "cdk.out"
+    "cdk.out",
+    "test"
   ]
 }

@@ -8,17 +8,19 @@ const ddb = DynamoDBDocumentClient.from(new DynamoDBClient({}));
 export const handler = async (
   event: APIGatewayProxyEventV2
 ): Promise<APIGatewayProxyResultV2> => {
+  
   const movieId = event.pathParameters?.movieId;
-  const role    = event.queryStringParameters?.role; 
-  if (!movieId || !role) {
+  if (!movieId) {
     return {
       statusCode: 400,
-      body: JSON.stringify({
-        message: 'Both movieId path parameter and role query parameter are required'
-      })
+      body: JSON.stringify({ message: 'movieId path parameter is required' })
     };
   }
 
+  
+  const role = event.queryStringParameters?.role;
+
+ 
   const result = await ddb.send(
     new QueryCommand({
       TableName: TABLE_NAME,
@@ -26,22 +28,18 @@ export const handler = async (
       ExpressionAttributeValues: { ':m': movieId }
     })
   );
+  let crewList = result.Items ?? [];
 
-  const crewMember = (result.Items ?? []).find(
-    item => (item.role as string).toLowerCase() === role.toLowerCase()
-  );
-
-  if (!crewMember) {
-    return {
-      statusCode: 404,
-      body: JSON.stringify({
-        message: `No crew member with role '${role}' found for movie ${movieId}`
-      })
-    };
+  
+  if (role) {
+    crewList = crewList.filter(
+      item => (item.role as string).toLowerCase() === role.toLowerCase()
+    );
   }
 
+ 
   return {
     statusCode: 200,
-    body: JSON.stringify(crewMember)
+    body: JSON.stringify(crewList)
   };
 };
