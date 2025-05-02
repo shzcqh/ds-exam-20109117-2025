@@ -1,0 +1,10 @@
+{
+    "name": "Alice",
+    "address": {
+      "street": "1 Main Street",
+      "city": "Capital City",
+      "country": "Ireland"
+    },
+    "email": "alice@example.com"
+  }
+  

@@ -1,16 +1,16 @@
 import * as cdk from "aws-cdk-lib";
+import { Construct } from "constructs";
 import * as lambdanode from "aws-cdk-lib/aws-lambda-nodejs";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as custom from "aws-cdk-lib/custom-resources";
-import { Construct } from "constructs";
-import { generateBatch } from "../shared/util";
-import { movieCrew } from "../seed/movies";
 import * as apig from "aws-cdk-lib/aws-apigateway";
 import * as events from "aws-cdk-lib/aws-lambda-event-sources";
 import * as sns from "aws-cdk-lib/aws-sns";
-import * as subs from "aws-cdk-lib/aws-sns-subscriptions";
 import * as sqs from "aws-cdk-lib/aws-sqs";
+import * as iam from "aws-cdk-lib/aws-iam";
+import { generateBatch } from "../shared/util";
+import { movieCrew } from "../seed/movies";
 
 export class ExamStack extends cdk.Stack {
   constructor(scope: Construct, id: string, props?: cdk.StackProps) {
@@ -18,7 +18,7 @@ export class ExamStack extends cdk.Stack {
 
     // ================================
     // Question 1 – Serverless REST API
-
+    // ================================
     const table = new dynamodb.Table(this, "MoviesTable", {
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       partitionKey: { name: "movieId", type: dynamodb.AttributeType.NUMBER },
@@ -28,19 +28,18 @@ export class ExamStack extends cdk.Stack {
     });
 
     const question1Fn = new lambdanode.NodejsFunction(this, "Question1Fn", {
-      architecture: lambda.Architecture.ARM_64,
-      runtime:      lambda.Runtime.NODEJS_22_X,
-      entry:        `${__dirname}/../lambdas/get-crew.ts`,
-      timeout:      cdk.Duration.seconds(10),
-      memorySize:   128,
+      runtime:    lambda.Runtime.NODEJS_22_X,
+      entry:      `${__dirname}/../lambdas/get-crew.ts`,
+      timeout:    cdk.Duration.seconds(10),
+      memorySize: 128,
       environment: {
         TABLE_NAME: table.tableName,
         REGION:     "eu-west-1",
       },
     });
-
     table.grantReadData(question1Fn);
 
+    // seed data
     new custom.AwsCustomResource(this, "moviesddbInitData", {
       onCreate: {
         service: "DynamoDB",
@@ -50,96 +49,110 @@ export class ExamStack extends cdk.Stack {
             [table.tableName]: generateBatch(movieCrew),
           },
         },
-        physicalResourceId:
-          custom.PhysicalResourceId.of("moviesddbInitData"),
+        physicalResourceId: custom.PhysicalResourceId.of("moviesddbInitData"),
       },
       policy: custom.AwsCustomResourcePolicy.fromSdkCalls({
         resources: [table.tableArn],
       }),
     });
 
+    // API Gateway
     const api = new apig.RestApi(this, "ExamAPI", {
       description: "Exam api",
       deployOptions: { stageName: "dev" },
       defaultCorsPreflightOptions: {
-        allowHeaders: ["Content-Type", "X-Amz-Date"],
+        allowHeaders: ["Content-Type","X-Amz-Date"],
         allowMethods: ["OPTIONS","GET","POST","PUT","PATCH","DELETE"],
-        allowCredentials: true,
         allowOrigins: ["*"],
+        allowCredentials: true
       },
     });
 
-    const crewResource   = api.root.addResource("crew");
-    const moviesResource = crewResource.addResource("movies");
-    const byIdResource   = moviesResource.addResource("{movieId}");
-    byIdResource.addMethod(
-      "GET",
-      new apig.LambdaIntegration(question1Fn)
-    );
+    const crew = api.root.addResource("crew");
+    const movies = crew.addResource("movies");
+    const byId = movies.addResource("{movieId}");
+    byId.addMethod("GET", new apig.LambdaIntegration(question1Fn));
 
     // ================================
-    // Question 2 – Event-Driven Architecture
+    // Question 2 – Event‐Driven Architecture
+    // ================================
 
-    // 1) SNS Topic
+    // SNS Topic
     const topic1 = new sns.Topic(this, "Topic1", {
-      displayName: "Exam topic",
+      displayName: "Exam topic"
     });
 
-    // 2) SQS Queues
+    // SQS queues
     const queueA = new sqs.Queue(this, "QueueA", {
-      receiveMessageWaitTime: cdk.Duration.seconds(5),
+      receiveMessageWaitTime: cdk.Duration.seconds(5)
     });
     const queueB = new sqs.Queue(this, "QueueB", {
-      receiveMessageWaitTime: cdk.Duration.seconds(5),
+      receiveMessageWaitTime: cdk.Duration.seconds(5)
     });
 
-    // 3) Lambdas
+    // Lambda X (reads from QueueA)
     const lambdaXFn = new lambdanode.NodejsFunction(this, "LambdaXFn", {
-      architecture: lambda.Architecture.ARM_64,
-      runtime:      lambda.Runtime.NODEJS_22_X,
-      entry:        `${__dirname}/../lambdas/lambdaX.ts`,
-      timeout:      cdk.Duration.seconds(10),
-      memorySize:   128,
-      environment: { REGION: "eu-west-1" },
+      runtime:    lambda.Runtime.NODEJS_22_X,
+      entry:      `${__dirname}/../lambdas/lambdaX.ts`,
+      timeout:    cdk.Duration.seconds(10),
+      memorySize: 128,
+      environment: { REGION: "eu-west-1" }
     });
+    // hook QueueA → LambdaX
+    lambdaXFn.addEventSource(new events.SqsEventSource(queueA));
+    queueA.grantConsumeMessages(lambdaXFn);
 
+    // Lambda Y (will forward missing‐email to QueueB)
     const lambdaYFn = new lambdanode.NodejsFunction(this, "LambdaYFn", {
-      architecture: lambda.Architecture.ARM_64,
-      runtime:      lambda.Runtime.NODEJS_22_X,
-      entry:        `${__dirname}/../lambdas/lambdaY.ts`,
-      timeout:      cdk.Duration.seconds(10),
-      memorySize:   128,
+      runtime:    lambda.Runtime.NODEJS_22_X,
+      entry:      `${__dirname}/../lambdas/lambdaY.ts`,
+      timeout:    cdk.Duration.seconds(10),
+      memorySize: 128,
       environment: {
-        REGION:     "eu-west-1",
-        QUEUE_B_URL: queueB.queueUrl,     
-      },
+        REGION:      "eu-west-1",
+        QUEUE_B_URL: queueB.queueUrl
+      }
     });
-
-    // Authorize lambdaYFn to send messages to queueB
     queueB.grantSendMessages(lambdaYFn);
 
-    // ── Part A + Part B Implementation ───────────────────────────────
-    topic1.addSubscription(new subs.SqsSubscription(queueA, {
+    // ── Part A: Ireland|China → QueueA ───────────────────────────────────
+    // We use a low‐level CfnSubscription to attach a filterPolicy on country
+    new sns.CfnSubscription(this, "SubQueueA", {
+      topicArn:    topic1.topicArn,
+      protocol:    "sqs",
+      endpoint:    queueA.queueArn,
       filterPolicy: {
-        country: sns.SubscriptionFilter.stringFilter({
-          allowlist: ["Ireland", "China"],
-        }),
-      },
+        country: ["Ireland", "China"]
+      }
+    });
+    // allow SNS → QueueA
+    queueA.addToResourcePolicy(new iam.PolicyStatement({
+      actions: ["sqs:SendMessage"],
+      principals: [new iam.ServicePrincipal("sns.amazonaws.com")],
+      resources: [queueA.queueArn],
+      conditions: {
+        ArnEquals: { "aws:SourceArn": topic1.topicArn }
+      }
     }));
 
-    topic1.addSubscription(new subs.LambdaSubscription(lambdaYFn, {
+    // ── Part B: other countries → LambdaY ─────────────────────────────────
+    new sns.CfnSubscription(this, "SubLambdaY", {
+      topicArn:    topic1.topicArn,
+      protocol:    "lambda",
+      endpoint:    lambdaYFn.functionArn,
       filterPolicy: {
-        country: sns.SubscriptionFilter.stringFilter({
-          denylist: ["Ireland", "China"],
-        }),
-      },
-    }));
+        country: { "anything-but": ["Ireland", "China"] }
+      }
+    });
+    // grant SNS invoke LambdaY
+    lambdaYFn.addPermission("AllowSNSInvoke", {
+      principal: new iam.ServicePrincipal("sns.amazonaws.com"),
+      sourceArn: topic1.topicArn
+    });
 
-    lambdaXFn.addEventSource(
-      new events.SqsEventSource(queueA)
-    );
-    
+    // ── Part C: LambdaY will itself forward missing‐email to QueueB ────────
+    // (logic inside lambdaY.ts)
 
-    
+    // done
   }
 }
