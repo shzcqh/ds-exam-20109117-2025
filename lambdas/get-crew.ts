@@ -9,18 +9,26 @@ export const handler = async (
   event: APIGatewayProxyEventV2
 ): Promise<APIGatewayProxyResultV2> => {
   
-  const movieId = event.pathParameters?.movieId;
-  if (!movieId) {
+  
+  const movieIdStr = event.pathParameters?.movieId;
+  if (!movieIdStr) {
     return {
       statusCode: 400,
       body: JSON.stringify({ message: 'movieId path parameter is required' })
+    };
+  }
+  const movieId = Number(movieIdStr);
+  if (isNaN(movieId)) {
+    return {
+      statusCode: 400,
+      body: JSON.stringify({ message: 'movieId must be a number' })
     };
   }
 
   
   const role = event.queryStringParameters?.role;
 
- 
+  
   const result = await ddb.send(
     new QueryCommand({
       TableName: TABLE_NAME,
@@ -37,7 +45,7 @@ export const handler = async (
     );
   }
 
- 
+  
   return {
     statusCode: 200,
     body: JSON.stringify(crewList)
