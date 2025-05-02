@@ -20,43 +20,50 @@ export class ExamStack extends cdk.Stack {
 
     // Question 1 - Serverless REST API
 
-    // A table that stores data about a movie's crew, i.e. director, camera operators, etc.
+    
     const table = new dynamodb.Table(this, "MoviesTable", {
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       partitionKey: { name: "movieId", type: dynamodb.AttributeType.NUMBER },
-      sortKey: { name: "role", type: dynamodb.AttributeType.STRING },
+      sortKey:      { name: "role",    type: dynamodb.AttributeType.STRING },
       removalPolicy: cdk.RemovalPolicy.DESTROY,
-      tableName: "ExamTable",
+      tableName:    "ExamTable",
     });
 
+    
     const question1Fn = new lambdanode.NodejsFunction(this, "Question1Fn", {
       architecture: lambda.Architecture.ARM_64,
-      runtime: lambda.Runtime.NODEJS_22_X,
-      entry: `${__dirname}/../lambdas/question1.ts`,
-      timeout: cdk.Duration.seconds(10),
-      memorySize: 128,
+      runtime:      lambda.Runtime.NODEJS_22_X,
+      entry:        `${__dirname}/../lambdas/question1.ts`,
+      timeout:      cdk.Duration.seconds(10),
+      memorySize:   128,
       environment: {
         TABLE_NAME: table.tableName,
-        REGION: "eu-west-1",
+        REGION:     "eu-west-1",
       },
     });
 
+    
+    table.grantReadData(question1Fn);
+
+    
     new custom.AwsCustomResource(this, "moviesddbInitData", {
       onCreate: {
         service: "DynamoDB",
-        action: "batchWriteItem",
+        action:  "batchWriteItem",
         parameters: {
           RequestItems: {
             [table.tableName]: generateBatch(movieCrew),
           },
         },
-        physicalResourceId: custom.PhysicalResourceId.of("moviesddbInitData"), //.of(Date.now().toString()),
+        physicalResourceId:
+          custom.PhysicalResourceId.of("moviesddbInitData"),
       },
       policy: custom.AwsCustomResourcePolicy.fromSdkCalls({
         resources: [table.tableArn],
       }),
     });
 
+    
     const api = new apig.RestApi(this, "ExamAPI", {
       description: "Exam api",
       deployOptions: {
@@ -70,22 +77,25 @@ export class ExamStack extends cdk.Stack {
       },
     });
 
-    const anEndpoint = api.root.addResource("patha");
-
+    
+    const crew   = api.root.addResource('crew');
+    const movies = crew.addResource('movies');
+    const byId   = movies.addResource('{movieId}');
+    byId.addMethod('GET', new apig.LambdaIntegration(question1Fn));
 
     // ==================================
     // Question 2 - Event-Driven architecture
 
-     const bucket = new s3.Bucket(this, "exam-bucket", {
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    const bucket = new s3.Bucket(this, "exam-bucket", {
+      removalPolicy:     cdk.RemovalPolicy.DESTROY,
       autoDeleteObjects: true,
-      publicReadAccess: false,
+      publicReadAccess:  false,
     });
 
     const topic1 = new sns.Topic(this, "Topic1", {
       displayName: "Exam topic",
     });
-    
+
     const queueB = new sqs.Queue(this, "QueueB", {
       receiveMessageWaitTime: cdk.Duration.seconds(5),
     });
@@ -93,13 +103,13 @@ export class ExamStack extends cdk.Stack {
     const queueA = new sqs.Queue(this, "queueA", {
       receiveMessageWaitTime: cdk.Duration.seconds(5),
     });
-    
+
     const lambdaXFn = new lambdanode.NodejsFunction(this, "LambdaXFn", {
       architecture: lambda.Architecture.ARM_64,
-      runtime: lambda.Runtime.NODEJS_22_X,
-      entry: `${__dirname}/../lambdas/lambdaX.ts`,
-      timeout: cdk.Duration.seconds(10),
-      memorySize: 128,
+      runtime:      lambda.Runtime.NODEJS_22_X,
+      entry:        `${__dirname}/../lambdas/lambdaX.ts`,
+      timeout:      cdk.Duration.seconds(10),
+      memorySize:   128,
       environment: {
         REGION: "eu-west-1",
       },
@@ -107,15 +117,15 @@ export class ExamStack extends cdk.Stack {
 
     const lambdaYFn = new lambdanode.NodejsFunction(this, "LambdaYFn", {
       architecture: lambda.Architecture.ARM_64,
-      runtime: lambda.Runtime.NODEJS_22_X,
-      entry: `${__dirname}/../lambdas/lambdaY.ts`,
-      timeout: cdk.Duration.seconds(10),
-      memorySize: 128,
+      runtime:      lambda.Runtime.NODEJS_22_X,
+      entry:        `${__dirname}/../lambdas/lambdaY.ts`,
+      timeout:      cdk.Duration.seconds(10),
+      memorySize:   128,
       environment: {
         REGION: "eu-west-1",
       },
     });
-    
+
+   
   }
 }
-  
