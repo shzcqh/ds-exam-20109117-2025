@@ -125,7 +125,14 @@ export class ExamStack extends cdk.Stack {
         REGION: "eu-west-1",
       },
     });
-
+  // ─── Part A Implementation ───────────────────────────────────
+    // Subscribe QueueA to Topic1
+    topic1.addSubscription(new subs.SqsSubscription(queueA));
+    // Subscribe LambdaY to Topic1
+    topic1.addSubscription(new subs.LambdaSubscription(lambdaYFn));
+    // Use QueueA as event source for LambdaX
+    lambdaXFn.addEventSource(new events.SqsEventSource(queueA));
+   
    
   }
 }
